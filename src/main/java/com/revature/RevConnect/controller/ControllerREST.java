@@ -75,6 +75,32 @@ public class ControllerREST {
         else return ResponseEntity.status(409).body("Username not found.");
     }
 
+    @GetMapping("/users/{userID}")
+    public ResponseEntity<User> getUser(@PathVariable int userID) {
+        User user = userService.getUser(userID);
+        if (user != null) {
+            return ResponseEntity.status(200).body(user);
+        } else {
+            return ResponseEntity.status(404).body(null);
+        }
+    }
+
+    @PutMapping("/users/{userID}")
+    public ResponseEntity<String> updateUser(@PathVariable int userID, @RequestBody User user) {
+        ObjectWriter ow = new ObjectMapper().writer().withDefaultPrettyPrinter();
+        User updatedUser = userService.updateUser(user);
+        if (updatedUser != null) {
+            try {
+                String jsonStr = ow.writeValueAsString(updatedUser);
+                return ResponseEntity.status(200).body(jsonStr);
+            } catch (JsonProcessingException e) {
+                return ResponseEntity.status(500).body("Internal Server Error");
+            }
+        } else {
+            return ResponseEntity.status(404).body("User not found");
+        }
+    }
+
     @PutMapping("/like/{postID}/{userID}")
     public ResponseEntity<String> addLike(@PathVariable int postID, @PathVariable int userID) { // TODO: Refactor with cookie
         if (likeService.findByPostIDAndUserID(postID, userID).isEmpty()) {

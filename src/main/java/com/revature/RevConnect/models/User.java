@@ -9,7 +9,6 @@ import java.util.List;
 @Entity
 @Table(name="Users")
 public class User {
-
     //User info
 
     //Primary key for identification
