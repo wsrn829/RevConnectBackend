@@ -5,9 +5,6 @@ import jakarta.persistence.*;
 @Entity
 @Table(name="Comments")
 public class Comment {
-
-    //Comment info
-
     //Primary key for identification
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

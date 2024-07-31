@@ -4,10 +4,10 @@ import com.revature.RevConnect.models.Follow;
 import com.revature.RevConnect.models.User;
 import com.revature.RevConnect.repositories.FollowRepository;
 import com.revature.RevConnect.repositories.UserRepository;
+import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.Collections;
 import java.util.List;
 
 @Service
@@ -19,42 +19,38 @@ public class FollowService {
     @Autowired
     private UserRepository userRepository;
 
-    // Create a new follow relationship
+    public boolean isFollowing(int followerUserID, int followingUserID) {
+        return followRepository.existsByFollower_UserIDAndFollowing_UserID(followerUserID, followingUserID);
+    }
+
     public void addFollow(int followerID, int followingID) {
-        User follower = userRepository.findByUserID(followerID);
-        User following = userRepository.findByUserID(followingID);
-
-        if (follower != null && following != null) {
-            Follow follow = new Follow(follower, following);
-            followRepository.save(follow);
-        }
+        // Implement the logic to add a follow
+        User follower = new User(); // Create or retrieve the User entity
+        User following = new User(); // Create or retrieve the User entity
+        follower.setUserID(followerID);
+        following.setUserID(followingID);
+        Follow follow = new Follow(follower, following);
+        followRepository.save(follow);
     }
 
-    // Find all follows by follower ID
-    public List<Follow> findByFollower(int followerID) {
-        User follower = userRepository.findByUserID(followerID);
-        return follower != null ? followRepository.findByFollower(follower) : Collections.emptyList();
-    }
-
-    // Find all follows by following ID
-    public List<Follow> findByFollowing(int followingID) {
-        User following = userRepository.findByUserID(followingID);
-        return following != null ? followRepository.findByFollowing(following) : Collections.emptyList();
-    }
-
-    // Check if a user is following another user
-    public boolean existsByFollowerAndFollowing(int followerID, int followingID) {
-        User follower = userRepository.findByUserID(followerID);
-        User following = userRepository.findByUserID(followingID);
-        return follower != null && following != null && followRepository.existsByFollowerAndFollowing(follower, following);
-    }
-
-    // Unfollow a user
+    @Transactional
     public void unfollow(int followerID, int followingID) {
-        User follower = userRepository.findByUserID(followerID);
-        User following = userRepository.findByUserID(followingID);
-        if (follower != null && following != null) {
-            followRepository.deleteByFollowerAndFollowing(follower, following);
+        try {
+            followRepository.deleteByFollowerIdAndFollowingId(followerID, followingID);
+            // Additional logging
+            System.out.println("Unfollow operation successful");
+        } catch (Exception e) {
+            System.err.println("Error during unfollow operation: " + e.getMessage());
+            throw e;
         }
+    }
+
+    // Method to find follows where the user is a follower
+    public List<Follow> findByFollower(int userID) {
+        return followRepository.findByFollowerUserID(userID);
+    }
+
+    public List<Follow> findByFollowing(int followingUserID) {
+        return followRepository.findByFollowingUserID(followingUserID);
     }
 }

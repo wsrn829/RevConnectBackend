@@ -5,18 +5,25 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
 import com.revature.RevConnect.models.*;
 import com.revature.RevConnect.service.*;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestController
 public class ControllerREST {
 
     @Autowired
     UserService userService;
+
+    @Autowired
+    JwtTokenService tokenService;
 
     @Autowired
     PostService postService;
@@ -31,19 +38,28 @@ public class ControllerREST {
     FollowService followService;
 
     @Autowired
-    MessageService messageService;
-
-    @GetMapping("/ping")
-    public String ping() {
-        return "pong";
-    }
+    ChatService chatService;
 
     @PostMapping("/register")
-    public ResponseEntity<String> registerUser(@RequestBody User user) {
+    @CrossOrigin(
+            origins = "http://localhost:3000",
+            allowedHeaders = "*",
+            allowCredentials = "true"
+    )
+
+    public ResponseEntity<String> registerUser(@RequestBody User user, HttpServletResponse response) {
         ObjectWriter ow = new ObjectMapper().writer().withDefaultPrettyPrinter();
         if (user.getPassword().length() >= 4 && !user.getUsername().isEmpty()) {
             if (userService.getUser(user.getUsername()) == null) {
                 User result = userService.addUser(user);
+
+                Map<String, String> claimsMap = new HashMap<>();
+                claimsMap.put("username", result.getUsername());
+                claimsMap.put("userID", String.valueOf(result.getUserID()));
+
+                Cookie cookie = new Cookie("Authentication", this.tokenService.generateToken(claimsMap));
+                response.addCookie(cookie);
+
                 try {
                     String jsonStr = ow.writeValueAsString(result);
                     return ResponseEntity.status(200).body(jsonStr);
@@ -58,11 +74,20 @@ public class ControllerREST {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<String> loginUser(@RequestBody User user) {
+    @CrossOrigin
+    public ResponseEntity<String> loginUser(@RequestBody User user, HttpServletResponse response) {
         ObjectWriter ow = new ObjectMapper().writer().withDefaultPrettyPrinter();
         if (userService.getUser(user.getUsername()) != null) {
             User result = userService.getUser(user.getUsername());
             if (result.getPassword().equals(user.getPassword())) {
+
+                Map<String, String> claimsMap = new HashMap<>();
+                claimsMap.put("username", result.getUsername());
+                claimsMap.put("userID", String.valueOf(result.getUserID()));
+
+                Cookie cookie = new Cookie("Authentication", this.tokenService.generateToken(claimsMap));
+                response.addCookie(cookie);
+
                 try {
                     String jsonStr = ow.writeValueAsString(result);
                     return ResponseEntity.status(200).body(jsonStr);
@@ -86,11 +111,24 @@ public class ControllerREST {
     }
 
     @PutMapping("/users/{userID}")
-    public ResponseEntity<String> updateUser(@PathVariable int userID, @RequestBody User user) {
-        ObjectWriter ow = new ObjectMapper().writer().withDefaultPrettyPrinter();
+    public ResponseEntity<String> updateUser(@CookieValue("Authentication") String bearerToken, @PathVariable int userID, @RequestBody User user) {
+        Integer loggedInUserID = tokenService.returnAuthID(bearerToken);
+        if (loggedInUserID == null) {
+            return ResponseEntity.status(401).body("Unauthorized");
+        }
+        if (!loggedInUserID.equals(userID)) {
+            return ResponseEntity.status(403).body("Forbidden: Cannot update another user's profile");
+        }
+
+        // Add validation to ensure user object is valid
+        if (user.getUsername() == null || user.getFirstname() == null || user.getLastname() == null || user.getBio() == null) {
+            return ResponseEntity.status(400).body("Invalid user data");
+        }
+
         User updatedUser = userService.updateUser(user);
         if (updatedUser != null) {
             try {
+                ObjectWriter ow = new ObjectMapper().writer().withDefaultPrettyPrinter();
                 String jsonStr = ow.writeValueAsString(updatedUser);
                 return ResponseEntity.status(200).body(jsonStr);
             } catch (JsonProcessingException e) {
@@ -99,6 +137,12 @@ public class ControllerREST {
         } else {
             return ResponseEntity.status(404).body("User not found");
         }
+    }
+
+    @GetMapping("/users/search")
+    public ResponseEntity<List<User>> searchUsers(@RequestParam String query) {
+        List<User> users = userService.searchUsers(query);
+        return ResponseEntity.status(200).body(users);
     }
 
     @PutMapping("/like/{postID}/{userID}")
@@ -137,82 +181,133 @@ public class ControllerREST {
     }
 
     @PostMapping("/follow")
-    public ResponseEntity<String> addFollow(@RequestBody Follow follow) {
-        User follower = userService.getUser(follow.getFollower().getUserID());
-        User following = userService.getUser(follow.getFollowing().getUserID());
-
-        if (follower != null && following != null) {
-            followService.addFollow(follower.getUserID(), following.getUserID());
-            return ResponseEntity.status(200).body("Successfully followed.");
+    public ResponseEntity<String> follow(@CookieValue("Authentication") String bearerToken, @RequestParam int followingID) {
+        Integer loggedInUserID = tokenService.returnAuthID(bearerToken);
+        if (loggedInUserID == null) {
+            return ResponseEntity.status(403).body("Unauthorized to follow.");
         }
-        return ResponseEntity.status(404).body("User not found.");
+
+        if (followService.isFollowing(loggedInUserID, followingID)) {
+            return ResponseEntity.status(400).body("You are already following this user.");
+        }
+
+        followService.addFollow(loggedInUserID, followingID);
+        return ResponseEntity.status(200).body("Successfully followed.");
     }
 
-    @GetMapping("/follows/follower/{followerID}")
-    public ResponseEntity<List<Follow>> getFollowsByFollowerID(@PathVariable int followerID) {
-        List<Follow> follows = followService.findByFollower(followerID);
-        return ResponseEntity.status(200).body(follows);
+    @GetMapping("/follows")
+    public ResponseEntity<List<Map<String, Object>>> getFollows(
+            @CookieValue("Authentication") String bearerToken,
+            @RequestParam int userID,
+            @RequestParam String type) {
+        Integer loggedInUserId = tokenService.returnAuthID(bearerToken);
+        if (loggedInUserId == null || !loggedInUserId.equals(userID)) {
+            return ResponseEntity.status(403).body(null);
+        }
+
+        List<Follow> follows;
+        if ("followers".equalsIgnoreCase(type)) {
+            follows = followService.findByFollower(userID);
+        } else if ("following".equalsIgnoreCase(type)) {
+            follows = followService.findByFollowing(userID);
+        } else {
+            return ResponseEntity.status(400).body(null);
+        }
+
+        List<Map<String, Object>> response = follows.stream().map(follow -> {
+            Map<String, Object> followMap = new HashMap<>();
+            followMap.put("followerUsername", follow.getFollower().getUsername());
+            followMap.put("followerBio", follow.getFollower().getBio());
+            followMap.put("followingUsername", follow.getFollowing().getUsername());
+            followMap.put("followingBio", follow.getFollowing().getBio());
+            return followMap;
+        }).collect(Collectors.toList());
+
+        return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/follows/following/{followingID}")
-    public ResponseEntity<List<Follow>> getFollowsByFollowingID(@PathVariable int followingID) {
-        List<Follow> follows = followService.findByFollowing(followingID);
-        return ResponseEntity.status(200).body(follows);
+    @GetMapping("/follows/follower/{followerUserID}")
+    public ResponseEntity<List<Map<String, Object>>> getFollowsByFollowerId(@CookieValue("Authentication") String bearerToken, @PathVariable int followerUserID) {
+        Integer loggedInUserId = tokenService.returnAuthID(bearerToken);
+        if (loggedInUserId == null || !loggedInUserId.equals(followerUserID)) {
+            return ResponseEntity.status(403).body(null);
+        }
+
+        List<Follow> follows = followService.findByFollower(followerUserID);
+        List<Map<String, Object>> response = follows.stream().map(follow -> {
+            Map<String, Object> followMap = new HashMap<>();
+            followMap.put("followerUsername", follow.getFollower().getUsername());
+            followMap.put("followerBio", follow.getFollower().getBio());
+            followMap.put("followingUsername", follow.getFollowing().getUsername());
+            followMap.put("followingBio", follow.getFollowing().getBio());
+            return followMap;
+        }).collect(Collectors.toList());
+
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/follows/following/{followingUserID}")
+    public ResponseEntity<List<Map<String, Object>>> getFollowsByFollowingId(@CookieValue("Authentication") String bearerToken, @PathVariable int followingUserID) {
+        Integer loggedInUserId = tokenService.returnAuthID(bearerToken);
+        if (loggedInUserId == null || !loggedInUserId.equals(followingUserID)) {
+            return ResponseEntity.status(403).body(null);
+        }
+
+        List<Follow> follows = followService.findByFollowing(followingUserID);
+        List<Map<String, Object>> response = follows.stream().map(follow -> {
+            Map<String, Object> followMap = new HashMap<>();
+            followMap.put("followerUsername", follow.getFollower().getUsername());
+            followMap.put("followerBio", follow.getFollower().getBio());
+            followMap.put("followingUsername", follow.getFollowing().getUsername());
+            followMap.put("followingBio", follow.getFollowing().getBio());
+            return followMap;
+        }).collect(Collectors.toList());
+
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/follows/check")
-    public ResponseEntity<Boolean> isFollowerIDFollowingFollowingID(@RequestParam int followerID, @RequestParam int followingID) {
-        boolean isFollowing = followService.existsByFollowerAndFollowing(followerID, followingID);
+    public ResponseEntity<Boolean> isFollowerIDFollowingFollowingID(@CookieValue("Authentication") String bearerToken, @RequestParam int followerID, @RequestParam int followingID) {
+        Integer loggedInUserID = tokenService.returnAuthID(bearerToken);
+        if (loggedInUserID == null || !loggedInUserID.equals(followerID)) {
+            return ResponseEntity.status(403).body(null);
+        }
+
+        boolean isFollowing = followService.isFollowing(followerID, followingID);
         return ResponseEntity.status(200).body(isFollowing);
     }
 
     @DeleteMapping("/unfollow")
-    public ResponseEntity<String> unfollow(@RequestParam int followerID, @RequestParam int followingID) {
+    public ResponseEntity<String> unfollow(@CookieValue("Authentication") String bearerToken, @RequestParam int followerID, @RequestParam int followingID) {
+        Integer loggedInUserID = tokenService.returnAuthID(bearerToken);
+        if (loggedInUserID == null || !loggedInUserID.equals(followerID)) {
+            return ResponseEntity.status(403).body("Unauthorized to unfollow.");
+        }
+
+        User follower = userService.getUser(followerID);
+        User following = userService.getUser(followingID);
+
+        if (follower == null || following == null) {
+            return ResponseEntity.status(404).body("User not found.");
+        }
+
+        if (!followService.isFollowing(followerID, followingID)) {
+            return ResponseEntity.status(404).body("Not following this user.");
+        }
+
         followService.unfollow(followerID, followingID);
         return ResponseEntity.status(200).body("Successfully unfollowed.");
     }
 
-    @PostMapping("/message")
-    public ResponseEntity<String> sendMessage(@RequestBody Message message) {
-        message.setTimestamp(LocalDateTime.now());
-        messageService.addMessage(message);
-        return ResponseEntity.status(200).body("Message sent.");
+    @PostMapping("/chats")
+    public ResponseEntity<Chat> createChat(@RequestBody Chat chat) {
+        Chat savedChat = chatService.createChat(chat);
+        return ResponseEntity.status(201).body(savedChat);
     }
 
-    @GetMapping("/messages")
-    public ResponseEntity<List<Message>> getAllMessages() {
-        List<Message> messages = messageService.findAllMessages();
-        return ResponseEntity.status(200).body(messages);
+    @GetMapping("/chats/get")
+    public ResponseEntity<List<Chat>> getAllChats() {
+        List<Chat> chats = chatService.getAllChats();
+        return ResponseEntity.ok(chats);
     }
-
-    @GetMapping("/messages/sender/{senderID}")
-    public ResponseEntity<List<Message>> getMessagesBySender(@PathVariable int senderID) {
-        User sender = userService.getUser(senderID);
-        if (sender != null) {
-            List<Message> messages = messageService.findBySender(sender);
-            return ResponseEntity.status(200).body(messages);
-        }
-        return ResponseEntity.status(404).body(null);
-    }
-
-    @DeleteMapping("/message/{messageID}")
-    public ResponseEntity<String> deleteMessage(@PathVariable Long messageID) {
-        if (messageService.existsById(messageID)) {
-            messageService.deleteMessage(messageID);
-            return ResponseEntity.status(200).body("Message deleted.");
-        }
-        return ResponseEntity.status(404).body("Message not found.");
-    }
-
-    @GetMapping("/messages/{senderID}/{receiverID}")
-    public ResponseEntity<List<Message>> getMessagesBetweenUsers(@PathVariable int senderID, @PathVariable int receiverID) {
-        User sender = userService.getUser(senderID);
-        User receiver = userService.getUser(receiverID);
-        if (sender != null && receiver != null) {
-            List<Message> messages = messageService.findMessagesBetweenUsers(sender, receiver);
-            return ResponseEntity.status(200).body(messages);
-        }
-        return ResponseEntity.status(404).body(null);
-    }
-
 }

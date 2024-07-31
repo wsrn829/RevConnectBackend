@@ -2,14 +2,21 @@ package com.revature.RevConnect.service;
 
 import com.revature.RevConnect.models.User;
 import com.revature.RevConnect.repositories.UserRepository;
+import com.revature.RevConnect.repositories.FollowRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class UserService {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private FollowRepository followRepository;
 
     public User addUser(User u) {
         return userRepository.save(u);
@@ -37,6 +44,10 @@ public class UserService {
         }
     }
 
+    public List<User> searchUsers(String query) {
+        return userRepository.findByUsernameContainingIgnoreCase(query);
+    }
+
     public User getUser(int userID) {
         return userRepository.findByUserID(userID);
     }
@@ -44,5 +55,4 @@ public class UserService {
     public User getUser(String username) {
         return userRepository.findByUsername(username);
     }
-
 }

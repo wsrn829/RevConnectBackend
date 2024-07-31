@@ -8,9 +8,6 @@ import java.util.List;
 @Entity
 @Table(name="Posts")
 public class Post {
-
-    //Post info
-
     //Primary key for identification
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
