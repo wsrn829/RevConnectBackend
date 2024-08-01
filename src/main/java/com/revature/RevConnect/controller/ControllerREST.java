@@ -40,6 +40,9 @@ public class ControllerREST {
     @Autowired
     ChatService chatService;
 
+    @Autowired
+    private NotificationService notificationService;
+
     @PostMapping("/register")
     @CrossOrigin(
             origins = "http://localhost:3000",
@@ -302,6 +305,7 @@ public class ControllerREST {
     @PostMapping("/chats")
     public ResponseEntity<Chat> createChat(@RequestBody Chat chat) {
         Chat savedChat = chatService.createChat(chat);
+        notificationService.createNotification(chat.getReceiver().getUserID(), "You have a new message from " + chat.getSender().getUserID());
         return ResponseEntity.status(201).body(savedChat);
     }
 
@@ -309,5 +313,17 @@ public class ControllerREST {
     public ResponseEntity<List<Chat>> getAllChats() {
         List<Chat> chats = chatService.getAllChats();
         return ResponseEntity.ok(chats);
+    }
+
+    @GetMapping("/notifications/unread/{userID}")
+    public ResponseEntity<List<Notification>> getUnreadNotifications(@PathVariable int userID) {
+        List<Notification> notifications = notificationService.getUnreadNotifications(userID);
+        return ResponseEntity.ok(notifications);
+    }
+
+    @PostMapping("/notifications/markAsRead/{id}")
+    public ResponseEntity<Void> markAsRead(@PathVariable Long id) {
+        notificationService.markAsRead(id);
+        return ResponseEntity.noContent().build();
     }
 }
