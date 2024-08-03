@@ -305,7 +305,8 @@ public class ControllerREST {
     @PostMapping("/chats")
     public ResponseEntity<Chat> createChat(@RequestBody Chat chat) {
         Chat savedChat = chatService.createChat(chat);
-        notificationService.createNotification(chat.getReceiver().getUserID(), "You have a new message from " + chat.getSender().getUserID());
+        String senderUsername = chat.getSender().getUsername();
+        notificationService.createNotification(chat.getReceiver().getUserID(), "You have a new message from " + senderUsername);
         return ResponseEntity.status(201).body(savedChat);
     }
 
