@@ -4,8 +4,6 @@ connect with each other. The core functional scope includes features such as per
 comment and share posts, edit, and delete their posts. The project also includes business and creator accounts, which allow
 them to create and promote posts.
 
-# I wrote all the code in this repository (except backend authentication, which was written by teammate Alden Dus).
-
 ## Dates
  - Code Freeze: EOB 7/31/24
  - Due: 8/2/24
