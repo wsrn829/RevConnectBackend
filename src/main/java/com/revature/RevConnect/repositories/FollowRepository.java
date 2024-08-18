@@ -21,9 +21,7 @@ public interface FollowRepository extends JpaRepository<Follow, Integer> {
     // Check if a user is following another user
     boolean existsByFollower_UserIDAndFollowing_UserID(int followerUserID, int followingUserID);
 
-    // Unfollow a user
+    // Unfollow a user using built-in delete method
+    @Transactional
     void deleteByFollower_UserIDAndFollowing_UserID(int followerUserID, int followingUserID);
-
-    @Modifying
-    @Query("DELETE FROM Follow f WHERE f.follower.id = :followerID AND f.following.id = :followingID")
-    void deleteByFollowerIdAndFollowingId(@Param("followerID") int followerID, @Param("followingID") int followingID);}
+}

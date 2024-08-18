@@ -24,28 +24,27 @@ public class FollowService {
     }
 
     public void addFollow(int followerID, int followingID) {
-        // Implement the logic to add a follow
-        User follower = new User(); // Create or retrieve the User entity
-        User following = new User(); // Create or retrieve the User entity
-        follower.setUserID(followerID);
-        following.setUserID(followingID);
+        User follower = userRepository.findById(followerID).orElseThrow(() -> new RuntimeException("Follower not found"));
+        User following = userRepository.findById(followingID).orElseThrow(() -> new RuntimeException("Following not found"));
         Follow follow = new Follow(follower, following);
         followRepository.save(follow);
     }
 
     @Transactional
     public void unfollow(int followerID, int followingID) {
-        try {
-            followRepository.deleteByFollowerIdAndFollowingId(followerID, followingID);
-            // Additional logging
-            System.out.println("Unfollow operation successful");
-        } catch (Exception e) {
-            System.err.println("Error during unfollow operation: " + e.getMessage());
-            throw e;
+        if (isFollowing(followerID, followingID)) {
+            try {
+                followRepository.deleteByFollower_UserIDAndFollowing_UserID(followerID, followingID);
+                System.out.println("Unfollow operation successful");
+            } catch (Exception e) {
+                System.err.println("Error during unfollow operation: " + e.getMessage());
+                throw e;
+            }
+        } else {
+            System.out.println("Unfollow operation failed: Not following");
         }
     }
 
-    // Method to find follows where the user is a follower
     public List<Follow> findByFollower(int userID) {
         return followRepository.findByFollowerUserID(userID);
     }
